@@ -421,7 +421,7 @@ def page_dashboard():
         with col3:
             st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-label">Stock Entreprises</div>
+                <div class="metric-label">Informations entreprises</div>
                 <div class="metric-value">{batchs['stock_entreprises']}</div>
                 <div style="font-size: 0.8rem; opacity: 0.8; margin-top: 0.5rem;">
                 Batchs disponibles
@@ -472,11 +472,11 @@ Table brute des ratios financiers
         
         with col2:
             st.info(f"""
-**Stock Entreprises (raw)**
+**Informations Entreprises (raw)**
 
-{stats.get('Stock Entreprises', 0):,} lignes
+{stats.get('Informations Entreprises', 0):,} lignes
 
-Table brute du stock d'entreprises
+Table brute des informations des entreprises
             """)
         
         with col3:
@@ -663,7 +663,7 @@ def page_transformation():
 **Vues créées**
 
 1. **v_ratios_cleaned** : Ratios financiers nettoyés et typés
-2. **v_stock_cleaned** : Stock d'entreprises nettoyé
+2. **v_stock_cleaned** : informations entreprises nettoyées
 3. **v_looker_studio** : Vue finale combinée pour Looker Studio
 
 Ces vues utilisent le timestamp sélectionné pour filtrer les données.
