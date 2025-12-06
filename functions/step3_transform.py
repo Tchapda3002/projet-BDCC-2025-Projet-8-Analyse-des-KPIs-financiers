@@ -239,7 +239,7 @@ if __name__ == "__main__":
                     print(f"{i:2d}. {ts.strftime('%Y-%m-%d %H:%M:%S')} {marker}")
                 print(f"\n{'=' * 80}")
             else:
-                print("\n⚠️  Aucun timestamp trouvé dans les données")
+                print("\n Aucun timestamp trouvé dans les données")
                 print("=" * 80)
         
         elif mode in ['transform', 'run']:

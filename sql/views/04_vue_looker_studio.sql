@@ -1,22 +1,16 @@
--- Vue : Jointure entre ratios et stock
--- Combine les données financières et administratives
--- Note : Le filtrage par timestamp est déjà appliqué dans v_ratios_cleaned et v_stock_cleaned
-
 CREATE OR REPLACE VIEW `{project_id}.{dataset}.v_looker_studio` AS
 SELECT
-    -- Identifiant
     s.siren,
+    s.nomUniteLegale,
+    s.categorie_juridique_niveau_I,
+    s.recoded_activite_principale_unite_legale,
+    s.original_activite_principale_unite_legale,
+    s.categorie_effectif,
+    s.categorie_entreprise_recodee,
+    s.ess_recodee,
+    s.etat_administratif_recoded,
+    s.extraction_date,
 
-    -- Variables administratives propres
-    s.classe_effectif,
-    s.tranche_effectifs_originale,
-    s.categorieEntreprise,
-    s.etatAdministratifUniteLegale,
-    s.categorieJuridiqueUniteLegale,
-    s.activitePrincipaleUniteLegale,
-    s.economieSocialeSolidaireUniteLegale,
-
-    -- Ratios financiers (issus de ratios_cleaned)
     r.date_cloture_exercice,
     r.chiffre_d_affaires,
     r.marge_brute,
@@ -37,8 +31,10 @@ SELECT
     r.rotation_des_stocks_jours,
     r.credit_clients_jours,
     r.credit_fournisseurs_jours,
-    r.type_bilan
+    r.type_bilan,
+    r.confidentiality,
+    r.extraction_timestamp
 
-FROM `{project_id}.{dataset}.v_stock_cleaned` AS s
-LEFT JOIN `{project_id}.{dataset}.v_ratios_cleaned` AS r
+FROM `{project_id}.{dataset}.v_ratios_cleaned` AS r
+INNER JOIN `{project_id}.{dataset}.v_stock_cleaned` AS s
     ON s.siren = r.siren;

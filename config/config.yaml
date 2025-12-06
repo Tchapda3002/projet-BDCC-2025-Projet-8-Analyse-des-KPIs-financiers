@@ -56,6 +56,7 @@ columns:
   id: "siren"
   keep:
     - siren
+    - nomUniteLegale
     - trancheEffectifsUniteLegale
     - categorieEntreprise
     - etatAdministratifUniteLegale
@@ -83,6 +84,18 @@ columns:
     - credit_clients_jours
     - credit_fournisseurs_jours
     - type_bilan
+    - recoded_macro_section
+    - confidentiality
+    - extraction_timestamp
+    - categorie_juridique_niveau_I,
+    - recoded_activite_principale_unite_legale,
+    - sl.original_activite_principale_unite_legale,
+    - sl.categorie_effectif,
+    - sl.categorie_entreprise_recodee,
+    - sl.ess_recodee,
+    - sl.etat_administratif_recoded
+    - extraction_date
+ 
 
 # Historisation (SIMPLE)
 historique:

@@ -28,6 +28,7 @@ WHERE
     AND cp.credit_fournisseurs_jours IS NOT NULL
     AND cp.type_bilan IS NOT NULL
     {timestamp_filter}
+   
 
 QUALIFY ROW_NUMBER() OVER (
   PARTITION BY siren, date_cloture_exercice
