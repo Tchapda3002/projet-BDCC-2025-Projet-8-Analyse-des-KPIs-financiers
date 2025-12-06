@@ -1,226 +1,267 @@
 """
-Étape 1 : Téléchargement des données depuis les URLs vers Google Cloud Storage
-Version streaming direct : URL → GCS (sans fichier temporaire)
-Adapté pour Streamlit Cloud
+Étape 3 : Transformation des données dans BigQuery
+Crée les vues de nettoyage et d'enrichissement avec filtrage par timestamp
 """
 
-import requests
-from google.cloud import storage, bigquery
-from datetime import datetime
+from google.cloud import bigquery
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import os
+from pathlib import Path
+from datetime import datetime
+import streamlit as st
 
 from config import CONFIG, ENV
 
-# Configuration du logging
 logging.basicConfig(level=ENV.get('log_level', 'INFO'))
 logger = logging.getLogger(__name__)
+
 
 def get_gcp_client(client_type='storage'):
     """Initialise un client GCP - détecte automatiquement l'environnement"""
     
-    # PRIORITÉ 1 : Essayer st.secrets (Streamlit Cloud)
-    try:
-        if 'gcp' in st.secrets:
-            from google.oauth2 import service_account
-            creds = service_account.Credentials.from_service_account_info(st.secrets["gcp"])
-            
-            if client_type == 'storage':
-                return storage.Client(credentials=creds, project=ENV['project_id'])
-            else:
-                return bigquery.Client(credentials=creds, project=ENV['project_id'])
-    except:
-        # st.secrets n'existe pas ou est vide → on est en local
-        pass
+    # Construire le chemin vers le fichier local
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    creds_path = os.path.join(parent_dir, 'config', 'gcp-credentials.json')
     
-    # PRIORITÉ 2 : Fichier JSON local
-    creds_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                              'config', 'gcp-credentials.json')
-    
+    # TESTER si le fichier existe
     if os.path.exists(creds_path):
+        # ENVIRONNEMENT LOCAL
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+        
+        if client_type == 'storage':
+            return storage.Client(project=ENV['project_id'])
+        else:
+            return bigquery.Client(project=ENV['project_id'])
     
-    if client_type == 'storage':
-        return storage.Client(project=ENV['project_id'])
     else:
-        return bigquery.Client(project=ENV['project_id'])
-
-
-def verifier_et_creer_bucket():
-    """Vérifie que le bucket existe, sinon le crée"""
-    client = get_gcp_client('storage')
-    bucket_name = ENV['bucket']
-    
-    bucket = client.bucket(bucket_name)
-    
-    if not bucket.exists():
-        logger.info(f"Bucket '{bucket_name}' n'existe pas, création en cours...")
+        # ENVIRONNEMENT STREAMLIT CLOUD (pas de fichier local)
         try:
-            bucket = client.create_bucket(bucket_name, location=ENV['region'])
-            logger.info(f"Bucket créé : gs://{bucket_name}")
+            if 'gcp' in st.secrets:
+                from google.oauth2 import service_account
+                creds = service_account.Credentials.from_service_account_info(st.secrets["gcp"])
+                
+                if client_type == 'storage':
+                    return storage.Client(credentials=creds, project=ENV['project_id'])
+                else:
+                    return bigquery.Client(credentials=creds, project=ENV['project_id'])
+            else:
+                st.error("Aucune credential trouvée (ni fichier local, ni secrets)")
+                return None
         except Exception as e:
-            logger.error(f"Impossible de créer le bucket : {e}")
-            raise
-    else:
-        logger.info(f"Bucket existant : gs://{bucket_name}")
+            st.error(f"Erreur credentials Streamlit Cloud : {e}")
+            return None
+
+def obtenir_timestamps_disponibles() -> List[datetime]:
+    """Récupère la liste des timestamps disponibles dans les tables raw"""
+    client = get_gcp_client('bigquery')
     
-    return bucket
+    query = f"""
+    SELECT DISTINCT extraction_timestamp
+    FROM `{ENV['project_id']}.{ENV['dataset']}.ratios_inpi_raw`
+    WHERE extraction_timestamp IS NOT NULL
+    ORDER BY extraction_timestamp DESC
+    """
+    
+    try:
+        results = client.query(query).result()
+        timestamps = [row.extraction_timestamp for row in results]
+        return timestamps
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des timestamps : {e}")
+        return []
 
 
-def generer_chemin_gcs(source_name: str, url: str, execution_datetime: datetime) -> str:
-    """Génère le chemin GCS selon le pattern défini dans la config"""
-    if 'parquet' in url.lower():
-        extension = 'parquet'
-    elif 'csv' in url.lower():
-        extension = 'csv'
-    else:
-        extension = 'parquet'
+def selectionner_timestamp(timestamp: Optional[str] = None) -> Optional[datetime]:
+    """Permet de sélectionner un timestamp pour filtrer les données"""
+    timestamps_disponibles = obtenir_timestamps_disponibles()
     
-    structure = CONFIG['storage']['structure']
-    chemin = structure.format(
-        raw_folder=CONFIG['storage']['raw_folder'],
-        source=source_name,
-        year=execution_datetime.strftime('%Y'),
-        month=execution_datetime.strftime('%m'),
-        date=execution_datetime.strftime('%Y-%m-%d'),
-        time=execution_datetime.strftime('%H-%M-%S')
+    if not timestamps_disponibles:
+        logger.error("Aucun timestamp disponible dans les données")
+        return None
+    
+    if timestamp is None:
+        logger.info(f"Aucun timestamp spécifié, utilisation du plus récent : {timestamps_disponibles[0]}")
+        return timestamps_disponibles[0]
+    
+    try:
+        timestamp_dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        
+        if timestamp_dt not in timestamps_disponibles:
+            logger.warning(f"Timestamp {timestamp} non trouvé dans les données disponibles")
+            logger.info("Timestamps disponibles :")
+            for i, ts in enumerate(timestamps_disponibles[:10], 1):
+                logger.info(f"  {i}. {ts}")
+            
+            logger.info(f"Utilisation du plus récent : {timestamps_disponibles[0]}")
+            return timestamps_disponibles[0]
+        
+        return timestamp_dt
+        
+    except Exception as e:
+        logger.error(f"Erreur lors du parsing du timestamp '{timestamp}' : {e}")
+        logger.info(f"Utilisation du plus récent : {timestamps_disponibles[0]}")
+        return timestamps_disponibles[0]
+
+
+def lire_fichier_sql(nom_fichier: str) -> str:
+    """Lit un fichier SQL depuis le dossier sql/views/"""
+    sql_path = Path(__file__).parent.parent / "sql" / "views" / nom_fichier
+    
+    if not sql_path.exists():
+        raise FileNotFoundError(f"Fichier SQL introuvable : {sql_path}")
+    
+    with open(sql_path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+
+def formater_sql(sql_template: str, timestamp: Optional[datetime] = None) -> str:
+    """Remplace les placeholders dans le SQL par les valeurs de config"""
+    if timestamp is None:
+        timestamp = selectionner_timestamp()
+    
+    if timestamp:
+        timestamp_filter = f"AND extraction_timestamp = TIMESTAMP('{timestamp.isoformat()}')"
+    else:
+        timestamp_filter = ""
+    
+    return sql_template.format(
+        project_id=ENV['project_id'],
+        dataset=ENV['dataset'],
+        timestamp_filter=timestamp_filter
     )
+
+
+def creer_vue(nom_vue: str, fichier_sql: str, timestamp: Optional[datetime] = None) -> bool:
+    """Crée ou remplace une vue dans BigQuery"""
+    client = get_gcp_client('bigquery')
     
-    chemin = chemin.rsplit('.', 1)[0] + f".{extension}"
-    return chemin
-
-
-def telecharger_et_streamer_vers_gcs(url: str, chemin_gcs: str, source_name: str) -> bool:
-    """Télécharge et stream directement vers GCS sans fichier temporaire"""
+    logger.info(f"Création de la vue : {nom_vue}")
+    logger.info(f"  Fichier SQL : {fichier_sql}")
+    if timestamp:
+        logger.info(f"  Timestamp : {timestamp}")
+    
     try:
-        logger.info(f"Téléchargement et streaming de {source_name}...")
-        logger.info(f"URL: {url[:80]}...")
+        sql = lire_fichier_sql(fichier_sql)
+        sql_formate = formater_sql(sql, timestamp)
         
-        client = get_gcp_client('storage')
-        bucket = client.bucket(ENV['bucket'])
-        blob = bucket.blob(chemin_gcs)
+        query_job = client.query(sql_formate)
+        query_job.result()
         
-        timeout = CONFIG['execution']['timeout_seconds']
-        
-        response = requests.get(url, stream=True, timeout=timeout)
-        response.raise_for_status()
-        
-        total_size = int(response.headers.get('content-length', 0))
-        if total_size:
-            logger.info(f"Taille totale : {total_size / 1024**2:.2f} MB")
-        
-        logger.info(f"Streaming vers gs://{ENV['bucket']}/{chemin_gcs}...")
-        
-        bytes_uploaded = 0
-        last_log = 0
-        chunk_size = 32 * 1024 * 1024
-        log_interval = 50 * 1024 * 1024
-        
-        with blob.open("wb", chunk_size=chunk_size) as f:
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if chunk:
-                    f.write(chunk)
-                    bytes_uploaded += len(chunk)
-                    
-                    if bytes_uploaded - last_log >= log_interval:
-                        if total_size > 0:
-                            progress = (bytes_uploaded / total_size) * 100
-                            logger.info(f"Progression : {progress:.1f}% ({bytes_uploaded / 1024**2:.0f} MB / {total_size / 1024**2:.0f} MB)")
-                        else:
-                            logger.info(f"Téléchargé : {bytes_uploaded / 1024**2:.0f} MB")
-                        last_log = bytes_uploaded
-        
-        logger.info(f"Upload terminé : {bytes_uploaded / 1024**2:.2f} MB")
-        logger.info(f"Destination : gs://{ENV['bucket']}/{chemin_gcs}")
-        
+        logger.info(f"SUCCESS : Vue {nom_vue} créée\n")
         return True
-    
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Erreur lors du téléchargement : {e}")
-        return False
-    
+        
     except Exception as e:
-        logger.error(f"Erreur lors du streaming vers GCS : {e}")
+        logger.error(f"ERREUR lors de la création de {nom_vue} : {e}\n")
         return False
 
 
-def download_data(source_name: Optional[str] = None) -> Dict[str, bool]:
-    """Télécharge les données depuis les URLs et les stream vers GCS"""
-    execution_datetime = datetime.now()
-    
+def transform_data(timestamp: Optional[str] = None) -> Dict[str, bool]:
+    """Fonction principale : crée toutes les vues de transformation"""
     logger.info("=" * 80)
-    logger.info("ÉTAPE 1 : TÉLÉCHARGEMENT DES DONNÉES (STREAMING DIRECT)")
-    logger.info(f"Timestamp du batch : {execution_datetime.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("ÉTAPE 3 : TRANSFORMATION DES DONNÉES (VUES BIGQUERY)")
     logger.info("=" * 80)
     
-    try:
-        verifier_et_creer_bucket()
-    except Exception as e:
-        logger.error(f"Erreur lors de la vérification du bucket : {e}")
-        return {}
+    timestamp_dt = selectionner_timestamp(timestamp)
     
-    sources = CONFIG['data_sources']['sources']
+    if timestamp_dt:
+        logger.info(f"\nTimestamp sélectionné : {timestamp_dt}")
+        logger.info(f"Date : {timestamp_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+    else:
+        logger.warning("\nAucun timestamp disponible - les vues utiliseront toutes les données")
+    
+    logger.info("=" * 80)
+    
+    vues = [
+        {
+            'nom': CONFIG['bigquery']['views']['ratios_cleaned'],
+            'fichier': '01_ratios_cleaned.sql',
+            'description': 'Nettoyage des ratios financiers'
+        },
+        {
+            'nom': CONFIG['bigquery']['views']['stock_cleaned'],
+            'fichier': '02_stock_cleaned.sql',
+            'description': 'Nettoyage du stock des entreprises'
+        },
+        {
+            'nom': CONFIG['bigquery']['views']['looker'],
+            'fichier': '04_vue_looker_studio.sql',
+            'description': 'Vue finale pour Looker Studio'
+        }
+    ]
+    
     resultats = {}
     
-    if source_name:
-        sources = [s for s in sources if s['name'] == source_name]
-        if not sources:
-            logger.error(f"Source '{source_name}' introuvable dans la configuration")
-            return {}
-    
-    for source in sources:
-        if not source.get('active', True):
-            logger.info(f"Source désactivée : {source['name']}")
-            continue
-        
+    for vue in vues:
         logger.info(f"\n{'-' * 80}")
-        logger.info(f"Source : {source['name']}")
-        logger.info(f"Description : {source['description']}")
+        logger.info(f"Vue : {vue['nom']}")
+        logger.info(f"Description : {vue['description']}")
         logger.info(f"{'-' * 80}")
         
-        try:
-            chemin_gcs = generer_chemin_gcs(source['name'], source['url'], execution_datetime)
-            
-            succes = telecharger_et_streamer_vers_gcs(
-                url=source['url'],
-                chemin_gcs=chemin_gcs,
-                source_name=source['name']
-            )
-            
-            resultats[source['name']] = succes
-            
-            if succes:
-                logger.info(f"SUCCESS : {source['name']} traité avec succès\n")
-            else:
-                logger.error(f"ÉCHEC : {source['name']}\n")
-        
-        except Exception as e:
-            logger.error(f"Erreur lors du traitement de {source['name']} : {e}")
-            resultats[source['name']] = False
+        succes = creer_vue(vue['nom'], vue['fichier'], timestamp_dt)
+        resultats[vue['nom']] = succes
     
     logger.info("\n" + "=" * 80)
-    logger.info("RÉSUMÉ DE L'ÉTAPE 1")
+    logger.info("RÉSUMÉ DES TRANSFORMATIONS")
     logger.info("=" * 80)
     
-    succes_count = sum(1 for v in resultats.values() if v)
+    succes_count = sum(resultats.values())
     total_count = len(resultats)
     
-    for source_name, succes in resultats.items():
+    for nom_vue, succes in resultats.items():
         status = "SUCCESS" if succes else "FAILED"
-        logger.info(f"  {source_name}: {status}")
+        logger.info(f"  {nom_vue}: {status}")
     
-    logger.info(f"\nTotal : {succes_count}/{total_count} sources traitées avec succès")
-    logger.info(f"Timestamp commun : {execution_datetime.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"\nTotal : {succes_count}/{total_count} vues créées avec succès")
     logger.info("=" * 80)
     
     return resultats
 
 
+# Point d'entrée CLI
 if __name__ == "__main__":
-    resultats = download_data()
+    import sys
     
-    print("\nTest de step1_download.py")
-    for source, succes in resultats.items():
-        status = "SUCCESS" if succes else "FAILED"
-        print(f"  {source}: {status}")
+    if len(sys.argv) > 1:
+        mode = sys.argv[1].lower()
+        
+        if mode == 'list':
+            print("\n" + "=" * 80)
+            print("TIMESTAMPS DISPONIBLES")
+            print("=" * 80)
+            
+            timestamps = obtenir_timestamps_disponibles()
+            
+            if timestamps:
+                print(f"\n{len(timestamps)} timestamp(s) trouvé(s) :\n")
+                for i, ts in enumerate(timestamps, 1):
+                    marker = "⭐ (plus récent)" if i == 1 else ""
+                    print(f"{i:2d}. {ts.strftime('%Y-%m-%d %H:%M:%S')} {marker}")
+                print(f"\n{'=' * 80}")
+            else:
+                print("\n⚠️  Aucun timestamp trouvé dans les données")
+                print("=" * 80)
+        
+        elif mode in ['transform', 'run']:
+            timestamp = sys.argv[2] if len(sys.argv) > 2 else None
+            resultats = transform_data(timestamp=timestamp)
+            
+            print("\n" + "=" * 80)
+            for vue, succes in resultats.items():
+                status = "✅ SUCCESS" if succes else "❌ FAILED"
+                print(f"  {vue}: {status}")
+            print("=" * 80)
+        
+        else:
+            print(f"Commande inconnue : {mode}")
+            print("\nUsage:")
+            print("  python -m functions.step3_transform list                    # Lister les timestamps")
+            print("  python -m functions.step3_transform transform               # Créer vues (timestamp récent)")
+            print("  python -m functions.step3_transform transform TIMESTAMP     # Créer vues (timestamp spécifique)")
+    
+    else:
+        print("\nUsage:")
+        print("  python -m functions.step3_transform list                    # Lister les timestamps")
+        print("  python -m functions.step3_transform transform               # Créer vues (timestamp récent)")
+        print("  python -m functions.step3_transform transform TIMESTAMP     # Créer vues (timestamp spécifique)")

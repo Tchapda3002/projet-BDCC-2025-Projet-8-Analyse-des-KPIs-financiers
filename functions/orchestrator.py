@@ -9,7 +9,6 @@ from datetime import datetime
 
 from functions.step1_download import download_data
 from functions.step2_load import charger_batch_vers_bigquery
-from functions.step3_transform import transform_data, obtenir_timestamps_disponibles
 
 from config import ENV
 

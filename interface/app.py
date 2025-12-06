@@ -16,7 +16,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from functions.step1_download import download_data
 from functions.step2_load import charger_batch_vers_bigquery
-from functions.step3_transform import transform_data
 from functions.orchestrator import run_pipeline
 
 import yaml
@@ -34,6 +33,7 @@ ENV = {
     'bucket': CONFIG['storage']['bucket_name'],
     'dataset': CONFIG['bigquery']['dataset'],
     'credentials': CONFIG['gcp']['credentials_path'],
+    'log_level': 'INFO'
 }
 
 # Configuration de la page
@@ -206,32 +206,38 @@ st.markdown("""
 def get_gcp_client(client_type='storage'):
     """Initialise un client GCP - détecte automatiquement l'environnement"""
     
-    # PRIORITÉ 1 : Essayer st.secrets (Streamlit Cloud)
-    try:
-        if 'gcp' in st.secrets:
-            from google.oauth2 import service_account
-            creds = service_account.Credentials.from_service_account_info(st.secrets["gcp"])
-            
-            if client_type == 'storage':
-                return storage.Client(credentials=creds, project=ENV['project_id'])
-            else:
-                return bigquery.Client(credentials=creds, project=ENV['project_id'])
-    except:
-        # st.secrets n'existe pas ou est vide → on est en local
-        pass
+    # Construire le chemin vers le fichier local
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    creds_path = os.path.join(parent_dir, 'config', 'gcp-credentials.json')
     
-    # PRIORITÉ 2 : Fichier JSON local
-    creds_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                              'config', 'gcp-credentials.json')
-    
+    # TESTER si le fichier existe
     if os.path.exists(creds_path):
+        # ENVIRONNEMENT LOCAL
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+        
+        if client_type == 'storage':
+            return storage.Client(project=ENV['project_id'])
+        else:
+            return bigquery.Client(project=ENV['project_id'])
     
-    if client_type == 'storage':
-        return storage.Client(project=ENV['project_id'])
     else:
-        return bigquery.Client(project=ENV['project_id'])
-    
+        # ENVIRONNEMENT STREAMLIT CLOUD (pas de fichier local)
+        try:
+            if 'gcp' in st.secrets:
+                from google.oauth2 import service_account
+                creds = service_account.Credentials.from_service_account_info(st.secrets["gcp"])
+                
+                if client_type == 'storage':
+                    return storage.Client(credentials=creds, project=ENV['project_id'])
+                else:
+                    return bigquery.Client(credentials=creds, project=ENV['project_id'])
+            else:
+                st.error("Aucune credential trouvée (ni fichier local, ni secrets)")
+                return None
+        except Exception as e:
+            st.error(f"Erreur credentials Streamlit Cloud : {e}")
+            return None
 
 
 def lister_batchs_disponibles() -> List[Dict]:
