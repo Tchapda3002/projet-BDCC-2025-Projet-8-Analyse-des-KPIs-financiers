@@ -1,6 +1,7 @@
 """
 Étape 1 : Téléchargement des données depuis les URLs vers Google Cloud Storage
 Version streaming direct : URL → GCS (sans fichier temporaire)
+Adapté pour Streamlit Cloud
 """
 
 import requests
@@ -17,13 +18,30 @@ logging.basicConfig(level=ENV.get('log_level', 'INFO'))
 logger = logging.getLogger(__name__)
 
 
-def verifier_et_creer_bucket():
-    """Vérifie que le bucket existe, sinon le crée"""
-    credentials_path = ENV['credentials']
+def get_storage_client():
+    """Initialise le client GCS avec secrets Streamlit ou credentials locales"""
+    try:
+        import streamlit as st
+        if 'gcp' in st.secrets:
+            from google.oauth2 import service_account
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp"]
+            )
+            return storage.Client(credentials=credentials, project=ENV['project_id'])
+    except (ImportError, KeyError):
+        pass
+    
+    # Fallback : utiliser credentials locales
+    credentials_path = ENV.get('credentials', '')
     if credentials_path and os.path.exists(credentials_path):
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
     
-    client = storage.Client(project=ENV['project_id'])
+    return storage.Client(project=ENV['project_id'])
+
+
+def verifier_et_creer_bucket():
+    """Vérifie que le bucket existe, sinon le crée"""
+    client = get_storage_client()
     bucket_name = ENV['bucket']
     
     bucket = client.bucket(bucket_name)
@@ -45,14 +63,6 @@ def generer_chemin_gcs(source_name: str, url: str, execution_datetime: datetime)
     """
     Génère le chemin GCS selon le pattern défini dans la config
     STRUCTURE : raw_data/2025-12/ratios_inpi__2025-12-03_14-30-15.parquet
-    
-    Args:
-        source_name: Nom de la source (ex: "ratios_inpi")
-        url: URL pour détecter l'extension du fichier
-        execution_datetime: Date/heure d'exécution du batch
-    
-    Returns:
-        str: Chemin complet GCS
     """
     # Détecter l'extension depuis l'URL
     if 'parquet' in url.lower():
@@ -79,28 +89,13 @@ def generer_chemin_gcs(source_name: str, url: str, execution_datetime: datetime)
 
 
 def telecharger_et_streamer_vers_gcs(url: str, chemin_gcs: str, source_name: str) -> bool:
-    """
-    Télécharge et stream directement vers GCS sans fichier temporaire
-    Avec affichage de la progression
-    
-    Args:
-        url: URL du fichier à télécharger
-        chemin_gcs: Chemin destination dans GCS
-        source_name: Nom de la source pour les logs
-    
-    Returns:
-        bool: True si succès, False sinon
-    """
+    """Télécharge et stream directement vers GCS sans fichier temporaire"""
     try:
         logger.info(f"Téléchargement et streaming de {source_name}...")
         logger.info(f"URL: {url[:80]}...")
         
         # Initialiser le client GCS
-        credentials_path = ENV['credentials']
-        if credentials_path and os.path.exists(credentials_path):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
-        
-        client = storage.Client(project=ENV['project_id'])
+        client = get_storage_client()
         bucket = client.bucket(ENV['bucket'])
         blob = bucket.blob(chemin_gcs)
         
@@ -159,14 +154,8 @@ def download_data(source_name: Optional[str] = None) -> Dict[str, bool]:
     """
     Fonction principale : télécharge les données depuis les URLs configurées
     et les stream directement vers GCS
-    
-    Args:
-        source_name: Nom d'une source spécifique (optionnel)
-    
-    Returns:
-        Dict avec le statut de chaque source (True=succès, False=échec)
     """
-    # NOUVEAU : Timestamp unique pour tout le batch
+    # Timestamp unique pour tout le batch
     execution_datetime = datetime.now()
     
     logger.info("=" * 80)
@@ -201,7 +190,6 @@ def download_data(source_name: Optional[str] = None) -> Dict[str, bool]:
         logger.info(f"{'-' * 80}")
         
         try:
-            # MODIFIÉ : Générer le chemin GCS avec le timestamp du batch
             chemin_gcs = generer_chemin_gcs(source['name'], source['url'], execution_datetime)
             
             # Télécharger et streamer directement vers GCS
@@ -240,13 +228,11 @@ def download_data(source_name: Optional[str] = None) -> Dict[str, bool]:
     
     return resultats
 
-
+    
 # Point d'entrée pour tests
 if __name__ == "__main__":
-    # Test de la fonction
     resultats = download_data()
     
-    # Afficher les résultats
     print("\nTest de step1_download.py (streaming direct)")
     for source, succes in resultats.items():
         status = "SUCCESS" if succes else "FAILED"
