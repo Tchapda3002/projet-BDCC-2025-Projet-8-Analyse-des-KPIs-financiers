@@ -205,10 +205,11 @@ st.markdown("""
 
 def get_gcp_client(client_type='storage'):
     """Initialise un client GCP - détecte automatiquement l'environnement"""
+    
+    # PRIORITÉ 1 : Essayer st.secrets (Streamlit Cloud)
     try:
-        from google.oauth2 import service_account
-        
         if 'gcp' in st.secrets:
+            from google.oauth2 import service_account
             creds = service_account.Credentials.from_service_account_info(st.secrets["gcp"])
             
             if client_type == 'storage':
@@ -216,8 +217,10 @@ def get_gcp_client(client_type='storage'):
             else:
                 return bigquery.Client(credentials=creds, project=ENV['project_id'])
     except:
+        # st.secrets n'existe pas ou est vide → on est en local
         pass
     
+    # PRIORITÉ 2 : Fichier JSON local
     creds_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
                               'config', 'gcp-credentials.json')
     
@@ -228,6 +231,7 @@ def get_gcp_client(client_type='storage'):
         return storage.Client(project=ENV['project_id'])
     else:
         return bigquery.Client(project=ENV['project_id'])
+    
 
 
 def lister_batchs_disponibles() -> List[Dict]:
