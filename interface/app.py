@@ -17,6 +17,7 @@ from functions.step1_download import download_data
 from functions.step2_load import charger_batch_vers_bigquery
 from functions.step3_transform import transform_data
 from functions.orchestrator import run_pipeline
+from google.oauth2 import service_account
 
 import yaml
 from google.cloud import bigquery, storage
@@ -204,9 +205,16 @@ st.markdown("""
 # ============================================================================
 
 def get_gcp_client(client_type='storage'):
-    credentials_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                    'config', 'gcp-credentials.json')
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+    if 'gcp' in st.secrets:
+        # Utiliser secrets Streamlit
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp"]
+        )
+    else:
+        # Fallback local
+        credentials_path = 'config/gcp-credentials.json'
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+
     
     if client_type == 'storage':
         return storage.Client(project=ENV['project_id'])
