@@ -14,7 +14,7 @@ dist/
 # Secrets et config
 .env
 config/gcp-credentials.json
-.streamlit/secrets.toml
+interface/.streamlit/secrets.toml
 *.json
 !config/config.yaml
 !package.json

@@ -13,7 +13,7 @@ import os
 from config import CONFIG, ENV
 
 # Configuration du logging
-logging.basicConfig(level=ENV['log_level'])
+logging.basicConfig(level=ENV.get('log_level', 'INFO'))
 logger = logging.getLogger(__name__)
 
 

@@ -33,6 +33,7 @@ ENV = {
     'bucket': CONFIG['storage']['bucket_name'],
     'dataset': CONFIG['bigquery']['dataset'],
     'credentials': CONFIG['gcp']['credentials_path'],
+    'log_level': 'INFO'  # ← AJOUTER
 }
 
 # Configuration de la page

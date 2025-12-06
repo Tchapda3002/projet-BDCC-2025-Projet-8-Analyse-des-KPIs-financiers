@@ -12,7 +12,7 @@ from datetime import datetime
 
 from config import CONFIG, ENV
 
-logging.basicConfig(level=ENV['log_level'])
+logging.basicConfig(level=ENV.get('log_level', 'INFO'))
 logger = logging.getLogger(__name__)
 
 

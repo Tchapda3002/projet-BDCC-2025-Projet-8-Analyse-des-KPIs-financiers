@@ -14,7 +14,7 @@ from functions.step3_transform import transform_data, obtenir_timestamps_disponi
 from config import ENV
 
 logging.basicConfig(
-    level=ENV['log_level'],
+    level=ENV.get('log_level', 'INFO'),
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
