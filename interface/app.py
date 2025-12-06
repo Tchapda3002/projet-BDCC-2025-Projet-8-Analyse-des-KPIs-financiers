@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from functions.step1_download import download_data
 from functions.step2_load import charger_batch_vers_bigquery
+from functions.step3_transform import transform_data
 from functions.orchestrator import run_pipeline
 
 import yaml
@@ -315,7 +316,7 @@ def obtenir_stats_bigquery() -> Dict:
         stats = {}
         tables = {
             'ratios_inpi_raw': 'Ratios INPI',
-            'stock_entreprises_raw': 'Stock Entreprises',
+            'stock_entreprises_raw': 'Informations Entreprises',
             'v_looker_studio': 'Vue Looker'
         }
         
