@@ -12,3 +12,4 @@ ENV = {
     'dataset': CONFIG['bigquery']['dataset'],
     'credentials': CONFIG['gcp'].get('credentials_path', '')
 }
+

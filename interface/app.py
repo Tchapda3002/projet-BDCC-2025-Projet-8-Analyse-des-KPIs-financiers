@@ -17,7 +17,6 @@ from functions.step1_download import download_data
 from functions.step2_load import charger_batch_vers_bigquery
 from functions.step3_transform import transform_data
 from functions.orchestrator import run_pipeline
-from google.oauth2 import service_account
 
 import yaml
 from google.cloud import bigquery, storage
@@ -205,16 +204,40 @@ st.markdown("""
 # ============================================================================
 
 def get_gcp_client(client_type='storage'):
-    if 'gcp' in st.secrets:
-        credentials = service_account.Credentials.from_service_account_info(
-            st.secrets["gcp"]
-        )
-        if client_type == 'storage':
-            return storage.Client(credentials=credentials, project=ENV['project_id'])
-        return bigquery.Client(credentials=credentials, project=ENV['project_id'])
+    """Initialise un client GCP - détecte automatiquement l'environnement"""
+    
+    # Détecter si on est sur Streamlit Cloud
+    is_streamlit_cloud = os.getenv('STREAMLIT_SHARING_MODE') is not None or \
+                        os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
+    
+    if is_streamlit_cloud:
+        # Environnement Streamlit Cloud : utiliser st.secrets
+        from google.oauth2 import service_account
+        
+        if 'gcp' in st.secrets:
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp"]
+            )
+            if client_type == 'storage':
+                return storage.Client(credentials=credentials, project=ENV['project_id'])
+            return bigquery.Client(credentials=credentials, project=ENV['project_id'])
+        else:
+            st.error("Secrets GCP non configurés sur Streamlit Cloud")
+            return None
     else:
-        st.error("Credentials GCP manquantes dans les secrets")
-        return None
+        # Environnement local : utiliser le fichier JSON
+        credentials_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                        'config', 'gcp-credentials.json')
+        
+        if not os.path.exists(credentials_path):
+            st.error(f"Fichier credentials introuvable : {credentials_path}")
+            return None
+        
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+        
+        if client_type == 'storage':
+            return storage.Client(project=ENV['project_id'])
+        return bigquery.Client(project=ENV['project_id'])
 
 
 def lister_batchs_disponibles() -> List[Dict]:
@@ -316,17 +339,16 @@ def main():
     st.markdown('<h1 class="main-title">Pipeline ETL</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Gestion moderne des données BigQuery</p>', unsafe_allow_html=True)
     
+    # Initialiser l'état stop
+    if 'stop_requested' not in st.session_state:
+        st.session_state.stop_requested = False
+    
     # Bouton Stop global
     col1, col2, col3 = st.columns([5, 1, 1])
     with col2:
         if st.button("🛑 STOP", type="secondary", use_container_width=True, key="global_stop"):
             st.session_state.stop_requested = True
             st.error("Arrêt demandé. Les processus en cours vont s'arrêter.")
-            st.rerun()
-    
-    # Initialiser l'état stop
-    if 'stop_requested' not in st.session_state:
-        st.session_state.stop_requested = False
     
     # Navigation horizontale (tabs)
     tab1, tab2, tab3, tab4, tab5 = st.tabs([

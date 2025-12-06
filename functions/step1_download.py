@@ -19,24 +19,41 @@ logger = logging.getLogger(__name__)
 
 
 def get_storage_client():
-    """Initialise le client GCS avec secrets Streamlit ou credentials locales"""
-    try:
-        import streamlit as st
-        if 'gcp' in st.secrets:
+    """Initialise le client GCS - détecte automatiquement l'environnement"""
+    
+    # Détecter si on est sur Streamlit Cloud
+    is_streamlit_cloud = os.getenv('STREAMLIT_SHARING_MODE') is not None or \
+                        os.getenv('STREAMLIT_RUNTIME_ENV') == 'cloud'
+    
+    if is_streamlit_cloud:
+        # Environnement Streamlit Cloud : utiliser st.secrets
+        try:
+            import streamlit as st
             from google.oauth2 import service_account
-            credentials = service_account.Credentials.from_service_account_info(
-                st.secrets["gcp"]
-            )
-            return storage.Client(credentials=credentials, project=ENV['project_id'])
-    except (ImportError, KeyError):
-        pass
-    
-    # Fallback : utiliser credentials locales
-    credentials_path = ENV.get('credentials', '')
-    if credentials_path and os.path.exists(credentials_path):
+            
+            if 'gcp' in st.secrets:
+                credentials = service_account.Credentials.from_service_account_info(
+                    st.secrets["gcp"]
+                )
+                logger.info("Utilisation des credentials Streamlit Cloud")
+                return storage.Client(credentials=credentials, project=ENV['project_id'])
+            else:
+                logger.error("Secrets GCP non configurés sur Streamlit Cloud")
+                raise ValueError("Secrets GCP manquants")
+        except ImportError:
+            logger.error("Streamlit non disponible en mode cloud")
+            raise
+    else:
+        # Environnement local : utiliser le fichier JSON
+        credentials_path = ENV.get('credentials', 'config/gcp-credentials.json')
+        
+        if not os.path.exists(credentials_path):
+            logger.error(f"Fichier credentials introuvable : {credentials_path}")
+            raise FileNotFoundError(f"Credentials manquantes : {credentials_path}")
+        
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
-    
-    return storage.Client(project=ENV['project_id'])
+        logger.info(f"Utilisation des credentials locales : {credentials_path}")
+        return storage.Client(project=ENV['project_id'])
 
 
 def verifier_et_creer_bucket():
@@ -228,7 +245,7 @@ def download_data(source_name: Optional[str] = None) -> Dict[str, bool]:
     
     return resultats
 
-    
+
 # Point d'entrée pour tests
 if __name__ == "__main__":
     resultats = download_data()
