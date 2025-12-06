@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Fonctions utilitaires
 # ---------------------------------------------------------------------------
-
 def get_gcp_client(client_type='storage'):
     """Initialise un client GCP - détecte automatiquement l'environnement"""
     
@@ -29,21 +28,23 @@ def get_gcp_client(client_type='storage'):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
     creds_path = os.path.join(parent_dir, 'config', 'gcp-credentials.json')
-    
-    # TESTER si le fichier existe
+        # TESTER si le fichier existe
     if os.path.exists(creds_path):
-        # ENVIRONNEMENT LOCAL
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
-        
-        if client_type == 'storage':
-            return storage.Client(project=ENV['project_id'])
-        else:
-            return bigquery.Client(project=ENV['project_id'])
-    
-    else:
-        # ENVIRONNEMENT STREAMLIT CLOUD (pas de fichier local)
         try:
-            if 'gcp' in st.secrets:
+            # ENVIRONNEMENT LOCAL
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+            
+            if client_type == 'storage':
+                return storage.Client(project=ENV['project_id'])
+            else:
+                return bigquery.Client(project=ENV['project_id'])
+        except:
+            logger.info("DEBUG: Mode LOCAL")
+            return None
+
+    else:
+            try:
+            # ENVIRONNEMENT STREAMLIT CLOUD (pas de fichier local)
                 from google.oauth2 import service_account
                 creds = service_account.Credentials.from_service_account_info(st.secrets["gcp"])
                 
@@ -51,12 +52,9 @@ def get_gcp_client(client_type='storage'):
                     return storage.Client(credentials=creds, project=ENV['project_id'])
                 else:
                     return bigquery.Client(credentials=creds, project=ENV['project_id'])
-            else:
-                st.error("Aucune credential trouvée (ni fichier local, ni secrets)")
-                return None
-        except Exception as e:
-            st.error(f"Erreur credentials Streamlit Cloud : {e}")
-            return None
+            except Exception as e:
+                    logger.info("DEBUG: Mode streamlit")
+                    return None
 
 
 def creer_dataset_si_necessaire():
