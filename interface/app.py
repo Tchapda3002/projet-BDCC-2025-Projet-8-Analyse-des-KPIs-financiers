@@ -9,6 +9,7 @@ from typing import List, Dict, Optional
 import pandas as pd
 import sys
 import os
+from PIL import Image
 
 # Configuration
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -346,12 +347,13 @@ def main():
             st.error("Arrêt demandé. Les processus en cours vont s'arrêter.")
     
     # Navigation horizontale (tabs)
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "Dashboard", 
         "Extraction", 
         "Chargement", 
         "Transformation", 
-        "Pipeline Complet"
+        "Pipeline Complet",
+        "Architecture"
     ])
     
     with tab1:
@@ -364,6 +366,8 @@ def main():
         page_transformation()
     with tab5:
         page_pipeline()
+    with tab6:
+        page_architecture()
 
 
 def page_dashboard():
@@ -818,11 +822,40 @@ Vous pouvez ignorer certaines étapes si les données sont déjà présentes.
             st.balloons()
             
             # Lien Looker
-            looker_url = CONFIG.get('looker_studio_url', 'https://lookerstudio.google.com/reporting/5a222634-0196-4b7c-aa28-60c249a4615f')
+            looker_url = CONFIG.get('looker_studio_url', 'https://lookerstudio.google.com')
             st.markdown("---")
             st.link_button("Ouvrir Looker Studio", looker_url, use_container_width=True)
         else:
             st.error("Pipeline terminé avec des erreurs")
+
+
+# ============================================================================
+# PAGE : ARCHITECTURE
+# ============================================================================
+
+def page_architecture():
+    st.markdown("## Architecture du Pipeline ETL")
+    st.markdown("Schéma détaillé du flux de données de l'extraction à la transformation.")
+    
+    st.markdown("---")
+    
+    # Diagramme Mermaid
+    st.markdown("### Flux de données complet")
+    
+    
+    image = Image.open('interface/architechture-etl.png')
+    st.image(image, use_column_width=True)
+    
+    
+    
+    config_info = f"""
+Projet GCP: {ENV['project_id']}
+Région: {ENV['region']}
+Bucket: {ENV['bucket']}
+Dataset BigQuery: {ENV['dataset']}
+    """
+    
+    st.code(config_info)
 
 
 if __name__ == "__main__":
