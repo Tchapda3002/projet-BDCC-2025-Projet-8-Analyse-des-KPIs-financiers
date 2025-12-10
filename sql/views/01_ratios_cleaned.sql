@@ -3,7 +3,8 @@
 
 CREATE OR REPLACE VIEW `{project_id}.{dataset}.v_ratios_cleaned` AS
 SELECT
-  cp.*
+  cp.*,
+
 FROM `{project_id}.{dataset}.ratios_inpi_raw` AS cp
 WHERE 
     cp.siren IS NOT NULL

@@ -121,6 +121,7 @@ columns:
     - score_risque_simple
     - classe_risque_globale
     - signal_risque
+    - sexeUniteLegale
     
  
 
