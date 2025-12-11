@@ -44,7 +44,7 @@ pipeline-etl-streamlit/
 ├── .env                         # Variables d'environnement
 ├── requirements.txt             # Dépendances Python
 ├── README.md                    # Documentation
-├── Links.md                     # Tous les liens du projet (A consulter automatiquement)
+├── Links.md                     # Tous les liens du projet (Dashborad, interface pipeline, sources de données, support de préssentation)
 ├── Dockerfile.streamlit         # Conteneur pour l'application streamlit
 └── .gitignore                   # Fichiers à ignorer
 ```
