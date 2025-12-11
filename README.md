@@ -6,7 +6,7 @@
 
 > Pipeline ETL moderne avec interface Streamlit pour l'extraction, le chargement et la transformation de données vers BigQuery
 
-## 👤 Auteur
+## 👤 Auteurs
 
 - **TCHAPDA KOUADJO Wilfred Rod**
 - **Pape Magette DIOP**
