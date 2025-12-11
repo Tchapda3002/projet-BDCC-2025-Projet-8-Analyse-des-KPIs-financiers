@@ -1,5 +1,10 @@
 # 🔗 Liens Utiles
 
+## Support de présentation
+- **Lien Canva de la présentation** : https://www.canva.com/design/DAG7MIOjA4U/vhKuR_2VFJQD39r4L-tVJA/edit?utm_content=DAG7MIOjA4U&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+
+- **Lien overleaf de la documentation** : https://fr.overleaf.com/read/qyndnwqbhjfy#e43018
+
 ## Dashboards
 
 - **Dashboard Principal Looker Studio**: https://lookerstudio.google.com/reporting/5a222634-0196-4b7c-aa28-60c249a4615f
