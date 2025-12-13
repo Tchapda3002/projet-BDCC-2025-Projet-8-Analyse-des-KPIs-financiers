@@ -1,7 +1,7 @@
 # 🔗 Liens Utiles
 
 ## Support de présentation
-- **Lien Canva de la présentation** : https://www.canva.com/design/DAG7MIOjA4U/vhKuR_2VFJQD39r4L-tVJA/edit?utm_content=DAG7MIOjA4U&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+- **Lien Canva de la présentation** : https://www.canva.com/design/DAG7X44IRbg/PH0it_zM_wZ0RbflZmIXfg/edit
 
 - **Lien overleaf de la documentation** : https://fr.overleaf.com/read/qyndnwqbhjfy#e43018
 
